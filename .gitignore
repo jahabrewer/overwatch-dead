@@ -1,0 +1,15 @@
+# ignore images and videos
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.mp4
+*.avi
+
+# trash
+.DS_Store
+.Trash-*
+
+# TFRecord directory
+tfimages/**
