@@ -4,10 +4,17 @@
 # usage example: still2portraits.sh still0013.png still0013_
 # with xargs: ls | xargs -I file ../still2portraits.sh file file_
 
-CROP_X_STARTS=(15 53 90 127 164 202 404 442 479 517 554 591)
-CROP_X_SIZE=34
-CROP_Y_START=18
-CROP_Y_SIZE=11
+# 480 values
+#CROP_X_STARTS=(15 53 90 127 164 202 404 442 479 517 554 591)
+#CROP_X_SIZE=34
+#CROP_Y_START=18
+#CROP_Y_SIZE=11
+
+# 720 values
+CROP_X_STARTS=(30 105 180 254 329 404 809 884 958 1033 1108 1182)
+CROP_X_SIZE=64
+CROP_Y_START=36
+CROP_Y_SIZE=24
 
 CONVERT=$(which convert)
 
