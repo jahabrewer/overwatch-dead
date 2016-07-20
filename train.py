@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import sys
 import tensorflow as tf
 import numpy as np
@@ -13,8 +14,8 @@ IMAGE_SIZE=IMAGE_WIDTH * IMAGE_HEIGHT * IMAGE_CHANNELS
 L1_L2_CONNECTIVITY = 800
 OUTPUT_CLASSES=2
 DROPOUT=0.5 # keep probability
-LEARNING_RATE=0.001
-NUM_STEPS=11
+LEARNING_RATE=0.5
+NUM_STEPS=21
 
 # Remember to generate a file name queue of you 'train.TFRecord' file path
 def read_and_decode(filename_queue):
@@ -118,12 +119,6 @@ def nn_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu):
     tf.histogram_summary(layer_name + '/activations', activations)
     return activations
 
-def conv2d(x, W):
-  return tf.nn.conv2d(x, W, strides=[1,1,1,1], padding='SAME')
-
-def max_pool_2x2(x):
-  return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
-
 def inference_2_layer(x):
   hidden1 = nn_layer(x, IMAGE_SIZE, IMAGE_SIZE, 'layer1')
 
@@ -136,35 +131,47 @@ def inference_2_layer(x):
   # y = nn_layer(x, 1122, 2, 'layer1', tf.nn.softmax)
   return y
 
+def conv2d(x, W):
+  # x/input should have shape [batch, in_height, in_width, in_channels]
+  # W/filter should have shape [filter_height, filter_width, in_channels, out_channels]
+  return tf.nn.conv2d(x, W, strides=[1,1,1,1], padding='SAME')
+
+# def max_pool_2x2(x):
+#   return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
+
 def inference_conv(x):
-    W_conv1 = weight_variable([5,5,IMAGE_CHANNELS,32])
-    b_conv1 = bias_variable([32])
+  filter_width = 5
+  filter_height = 5
+  output_depth_1 = 32
+  output_depth_2 = 64
 
-    # not sure about ordering or height/width here. consult docs for tf.nn.conv2d?
-    x_image = tf.reshape(x, [-1,IMAGE_HEIGHT,IMAGE_WIDTH,IMAGE_CHANNELS])
+  W_conv1 = weight_variable([filter_height, filter_width, IMAGE_CHANNELS, output_depth_1])
+  b_conv1 = bias_variable([output_depth_1])
 
-    h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
-    h_pool1 = max_pool_2x2(h_conv1)
+  x_image = tf.reshape(x, [-1, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS])
 
-    W_conv2 = weight_variable([5,5,32,64])
-    b_conv2 = bias_variable([64])
+  h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+  # h_pool1 = max_pool_2x2(h_conv1)
 
-    h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
-    h_pool2 = max_pool_2x2(h_conv2)
+  W_conv2 = weight_variable([filter_height, filter_width, output_depth_1, output_depth_2])
+  b_conv2 = bias_variable([output_depth_2])
 
-    W_fc1 = weight_variable([7*7*64, 1024])
-    b_fc1 = bias_variable([1024])
+  h_conv2 = tf.nn.relu(conv2d(h_conv1, W_conv2) + b_conv2)
+  # h_pool2 = max_pool_2x2(h_conv2)
 
-    h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
-    h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+  W_fc1 = weight_variable([IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2, 1024])
+  b_fc1 = bias_variable([1024])
 
-    keep_prob = tf.placeholder(tf.float32)
-    h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+  h_conv2_flat = tf.reshape(h_conv2, [-1, IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2])
+  h_fc1 = tf.nn.relu(tf.matmul(h_conv2_flat, W_fc1) + b_fc1)
 
-    W_fc2 = weight_variable([1024, OUTPUT_CLASSES])
-    b_fc2 = bias_variable([OUTPUT_CLASSES])
+  keep_prob = tf.placeholder(tf.float32)
+  h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
-    return tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
+  W_fc2 = weight_variable([1024, OUTPUT_CLASSES])
+  b_fc2 = bias_variable([OUTPUT_CLASSES])
+
+  return tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2), keep_prob
 
 # adapted from cifar10
 # def inference_conv2(x):
@@ -188,9 +195,8 @@ def main(training_file, validation_file):
       x = tf.placeholder(tf.float32, [None, IMAGE_SIZE], name='x-input')
       y_ = tf.placeholder(tf.float32, [None, OUTPUT_CLASSES], name='y-input')
 
-    inference = inference_2_layer
-    # inference = inference_conv
-    y = inference(x)
+    # y = inference_2_layer(x)
+    y, keep_prob = inference_conv(x)
 
     with tf.name_scope('cross_entropy'):
       diff = y_ * tf.log(y)
@@ -250,20 +256,23 @@ def main(training_file, validation_file):
 
     # train
     for i in range(NUM_STEPS):
-      if i % 10 == 0:
+      if i % 5 == 0:
         summary, acc = sess.run([merged, accuracy],
-          feed_dict={x: validation_examples, y_: validation_labels})
+          feed_dict={x: validation_examples, y_: validation_labels, keep_prob: 1.0})
         summary_writer.add_summary(summary, i)
+        print()
         print('Accuracy at step {0}: {1}'.format(i, acc))
       else:
         sess.run(train_step,
-          feed_dict={x: training_examples, y_: training_labels})
+          feed_dict={x: training_examples, y_: training_labels, keep_prob: DROPOUT})
+        print('.', end='')
+        sys.stdout.flush()
 
     # show loss on training data
-    print(sess.run(accuracy, feed_dict={x: training_examples, y_: training_labels}))
+    # print(sess.run(accuracy, feed_dict={x: training_examples, y_: training_labels}))
 
     # show loss on validation data
-    print(sess.run(accuracy, feed_dict={x: validation_examples, y_: validation_labels}))
+    # print(sess.run(accuracy, feed_dict={x: validation_examples, y_: validation_labels}))
 
     coord.request_stop()
     coord.join(threads)
