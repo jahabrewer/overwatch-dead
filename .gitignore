@@ -12,4 +12,4 @@
 .Trash-*
 
 # TFRecord directory
-tfimages/**
+**/tfimages/
