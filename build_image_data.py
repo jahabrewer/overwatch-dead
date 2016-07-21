@@ -75,23 +75,25 @@ import os
 import random
 import sys
 import threading
+import argparse
 
 
 import numpy as np
 import tensorflow as tf
 
-# TODO make these proper arguments
-class FLAGS:
-  train_directory = '/media/sf_overwatch-dead/traincrops/'
-  validation_directory = '/media/sf_overwatch-dead/validationcrops/'
-  output_directory = '/media/sf_overwatch-dead/tfimages/'
+# parse args
+parser = argparse.ArgumentParser()
+parser.add_argument("labels_file", help="file containing labels, one per line")
+parser.add_argument("train_directory", help="directory containing files in the training set")
+parser.add_argument("validation_directory", help="directory containing files in the validation set")
+parser.add_argument("output_directory", help="directory where TFRecord files will be created")
+parser.add_argument("--train-shards", help="number of files to shard the training set into", type=int, default=1)
+parser.add_argument("--validation-shards", help="number of files to shard the validation set into", type=int, default=1)
+parser.add_argument("--num-threads", help="number of threads to use", type=int, default=1)
+parser.add_argument("-v", "--verbose", action="store_true")
+args = parser.parse_args()
 
-  # use a single file for each for simplicity
-  train_shards = 1
-  validation_shards = 1
-  num_threads = 1
-
-  labels_file = '/media/sf_overwatch-dead/labels'
+FLAGS = args
 
 # The labels file contains a list of valid labels are held in this file.
 # Assumes that the file contains entries as such:
