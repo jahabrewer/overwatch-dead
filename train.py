@@ -5,17 +5,35 @@ import sys
 import tensorflow as tf
 import numpy as np
 from PIL import Image
+import argparse
 
-# TODO hardcoded
-IMAGE_WIDTH=34
-IMAGE_HEIGHT=11
-IMAGE_CHANNELS=3
+
+# parse args
+parser = argparse.ArgumentParser()
+parser.add_argument("training_file", help="TFRecord file containing training examples")
+parser.add_argument("validation_file", help="TFRecord file containing validation examples")
+parser.add_argument("--image-width", "-iw", type=int)
+parser.add_argument("--image-height", "-ih", type=int)
+parser.add_argument("--image-channels", "-ic", type=int, choices=[1,3,4], help="number of color channels in the images")
+parser.add_argument("--dropout", "-d", type=float, help="keep probability in the dropout layer")
+parser.add_argument("--learning-rate", "-l", type=float)
+parser.add_argument("--steps", "-s", type=int, help="number of iterations the model will be trained")
+parser.add_argument("--checkpoint-interval", "-ci", type=int, help="interval in steps at which a summary will be output")
+parser.add_argument("--num-training-examples", "-tn", type=int, help="number of examples in the training file")
+parser.add_argument("--num-validation-examples", "-tv", type=int, help="number of examples in the validation file")
+args = parser.parse_args()
+
+IMAGE_WIDTH=args.image_width
+IMAGE_HEIGHT=args.image_height
+IMAGE_CHANNELS=args.image_channels
 IMAGE_SIZE=IMAGE_WIDTH * IMAGE_HEIGHT * IMAGE_CHANNELS
-L1_L2_CONNECTIVITY = 800
 OUTPUT_CLASSES=2
-DROPOUT=0.5 # keep probability
-LEARNING_RATE=0.5
-NUM_STEPS=21
+DROPOUT=args.dropout # keep probability
+LEARNING_RATE=args.learning_rate
+NUM_STEPS=args.steps
+# TODO hardcoded numbers of examples
+NUM_TRAINING_EXAMPLES = args.num_training_examples
+NUM_VALIDATION_EXAMPLES = args.num_validation_examples
 
 # Remember to generate a file name queue of you 'train.TFRecord' file path
 def read_and_decode(filename_queue):
@@ -46,7 +64,7 @@ def read_and_decode(filename_queue):
   label = tf.cast(features['image/class/label'], tf.int32)
 
   image = tf.reshape(image, tf.pack([height, width, channels]))
-  image.set_shape([34,11,3])
+  image.set_shape([IMAGE_WIDTH,IMAGE_HEIGHT,IMAGE_CHANNELS])
 
   # OPTIONAL: Could reshape into a 28x28 image and apply distortions
   # here.  Since we are not applying any distortions in this
@@ -227,9 +245,6 @@ def main(training_file, validation_file):
     tf.image_summary("incorrect", incorrect_x, max_images=5)
 
     # filename_queue = tf.train.string_input_producer([training_file])
-    # TODO hardcoded numbers of examples
-    NUM_TRAINING_EXAMPLES = 6695
-    NUM_VALIDATION_EXAMPLES = 1663
     training_examples_op, training_labels_op = inputs(training_file, NUM_TRAINING_EXAMPLES, 1)
     validation_examples_op, validation_labels_op = inputs(validation_file, NUM_VALIDATION_EXAMPLES, 1)
     training_labels_sliced_op = tf.slice(tf.one_hot(training_labels_op, 3), [0, 1], [-1, -1])
@@ -256,7 +271,7 @@ def main(training_file, validation_file):
 
     # train
     for i in range(NUM_STEPS):
-      if i % 5 == 0:
+      if i % args.checkpoint_interval == 0:
         summary, acc = sess.run([merged, accuracy],
           feed_dict={x: validation_examples, y_: validation_labels, keep_prob: 1.0})
         summary_writer.add_summary(summary, i)
@@ -278,11 +293,5 @@ def main(training_file, validation_file):
     coord.join(threads)
 
 if __name__ == "__main__":
-  if len(sys.argv) != 3:
-    print("Usage: {0} <train TFRecord file> <validation TFRecord file>".format(sys.argv[0]))
-    exit()
-
-  training_file = sys.argv[1]
-  validation_file = sys.argv[2]
-  main(training_file, validation_file)
+  main(args.training_file, args.validation_file)
 
