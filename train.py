@@ -21,6 +21,7 @@ parser.add_argument("--steps", "-s", type=int, help="number of iterations the mo
 parser.add_argument("--checkpoint-interval", "-ci", type=int, help="interval in steps at which a summary will be output")
 parser.add_argument("--num-training-examples", "-tn", type=int, help="number of examples in the training file")
 parser.add_argument("--num-validation-examples", "-tv", type=int, help="number of examples in the validation file")
+parser.add_argument("--batch-size", "-b", type=int, help="number of shuffled examples to use in each training step")
 args = parser.parse_args()
 
 IMAGE_WIDTH=args.image_width
@@ -244,9 +245,10 @@ def main(training_file, validation_file):
     #incorrect_y = tf.gather(tf.argmax(y, 1), incorrect_prediction_indices)
     tf.image_summary("incorrect", incorrect_x, max_images=5)
 
-    # filename_queue = tf.train.string_input_producer([training_file])
-    training_examples_op, training_labels_op = inputs(training_file, NUM_TRAINING_EXAMPLES, 1)
+    # TODO inputs is shuffling. we just want to load all validation examples.
+    training_examples_op, training_labels_op = inputs(training_file, args.batch_size, 1)
     validation_examples_op, validation_labels_op = inputs(validation_file, NUM_VALIDATION_EXAMPLES, 1)
+    # must slice because labels are 1 and 2, 0 is skipped by build_image_data
     training_labels_sliced_op = tf.slice(tf.one_hot(training_labels_op, 3), [0, 1], [-1, -1])
     validation_labels_sliced_op = tf.slice(tf.one_hot(validation_labels_op, 3), [0, 1], [-1, -1])
 
@@ -261,12 +263,7 @@ def main(training_file, validation_file):
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(coord=coord)
 
-    training_examples = sess.run(training_examples_op)
-    # must slice because labels are 1 and 2, 0 is skipped by build_image_data
-    training_labels = sess.run(training_labels_sliced_op)
-
     validation_examples = sess.run(validation_examples_op)
-    # must slice because labels are 1 and 2, 0 is skipped by build_image_data
     validation_labels = sess.run(validation_labels_sliced_op)
 
     # train
@@ -278,6 +275,8 @@ def main(training_file, validation_file):
         print()
         print('Accuracy at step {0}: {1}'.format(i, acc))
       else:
+        training_examples, training_labels = sess.run([training_examples_op, training_labels_sliced_op])
+
         sess.run(train_step,
           feed_dict={x: training_examples, y_: training_labels, keep_prob: DROPOUT})
         print('.', end='')
