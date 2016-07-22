@@ -55,17 +55,18 @@ def read_and_decode(filename_queue):
     })
 
   # Convert from a scalar string tensor (whose single string has
-  # image = tf.decode_raw(features['image/encoded'], tf.uint8)
   image = tf.image.decode_jpeg(features['image/encoded'], channels=3)
   height = tf.cast(features['image/height'], tf.int32)
   width = tf.cast(features['image/width'], tf.int32)
   channels = tf.cast(features['image/channels'], tf.int32)
+  filename = features['image/filename']
 
   # Convert label from a scalar uint8 tensor to an int32 scalar.
   label = tf.cast(features['image/class/label'], tf.int32)
 
-  image = tf.reshape(image, tf.pack([height, width, channels]))
-  image.set_shape([IMAGE_WIDTH,IMAGE_HEIGHT,IMAGE_CHANNELS])
+  # image = tf.reshape(image, tf.pack([height, width, channels]))
+  # image.set_shape([IMAGE_WIDTH,IMAGE_HEIGHT,IMAGE_CHANNELS])
+  image.set_shape([IMAGE_HEIGHT,IMAGE_WIDTH,IMAGE_CHANNELS])
 
   # OPTIONAL: Could reshape into a 28x28 image and apply distortions
   # here.  Since we are not applying any distortions in this
@@ -79,21 +80,28 @@ def read_and_decode(filename_queue):
   # Flatten
   image = tf.reshape(image, [-1])
 
-  return image, label
+  return image, label, filename
 
 # from fully_connected_reader.py
-def inputs(filename, batch_size, num_epochs):
+def inputs(filename, batch_size, num_epochs, shuffle=True):
   if not num_epochs: num_epochs = None
   with tf.name_scope('input'):
     filename_queue = tf.train.string_input_producer([filename])
 
-    image, label = read_and_decode(filename_queue)
+    image, label, filename = read_and_decode(filename_queue)
 
-    images, sparse_labels = tf.train.shuffle_batch(
-      [image, label], batch_size=batch_size, capacity=1000 + 3*batch_size,
-      min_after_dequeue=1000)
+    if shuffle:
+      image_batch, label_batch, filename_batch = tf.train.shuffle_batch(
+        [image, label, filename], batch_size=batch_size, capacity=1000 + 3*batch_size,
+        min_after_dequeue=1000)
+    else:
+      image_batch, label_batch, filename_batch = tf.train.batch(
+        [image, label, filename], batch_size=batch_size, capacity=1000 + 3*batch_size)
 
-    return images, sparse_labels
+    # tf.image_summary('images/' + filename,
+    #   tf.reshape(image_batch, [-1, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS]))
+
+    return image_batch, label_batch, filename_batch
 
 def weight_variable(shape, stddev=0.1):
   initial = tf.truncated_normal(shape, stddev=stddev)
@@ -178,9 +186,11 @@ def inference_conv(x):
   h_conv2 = tf.nn.relu(conv2d(h_conv1, W_conv2) + b_conv2)
   # h_pool2 = max_pool_2x2(h_conv2)
 
+  # W_fc1 = weight_variable([IMAGE_HEIGHT * IMAGE_WIDTH / 16 * output_depth_2, 1024])
   W_fc1 = weight_variable([IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2, 1024])
   b_fc1 = bias_variable([1024])
 
+  # h_conv2_flat = tf.reshape(h_conv2, [-1, IMAGE_HEIGHT * IMAGE_WIDTH / 16 * output_depth_2])
   h_conv2_flat = tf.reshape(h_conv2, [-1, IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2])
   h_fc1 = tf.nn.relu(tf.matmul(h_conv2_flat, W_fc1) + b_fc1)
 
@@ -243,11 +253,13 @@ def main(training_file, validation_file):
     incorrect_x = tf.reshape(incorrect_x_flat, [-1, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS])
     # the (incorrectly) predicted classes for these images
     #incorrect_y = tf.gather(tf.argmax(y, 1), incorrect_prediction_indices)
-    tf.image_summary("incorrect", incorrect_x, max_images=5)
+    tf.image_summary("incorrect", incorrect_x, max_images=100)
 
     # TODO inputs is shuffling. we just want to load all validation examples.
-    training_examples_op, training_labels_op = inputs(training_file, args.batch_size, 1)
-    validation_examples_op, validation_labels_op = inputs(validation_file, NUM_VALIDATION_EXAMPLES, 1)
+    training_examples_op, training_labels_op, training_filename_op = \
+      inputs(training_file, args.batch_size, 1)
+    validation_examples_op, validation_labels_op, validation_filename_op = \
+      inputs(validation_file, NUM_VALIDATION_EXAMPLES, 1, shuffle=False)
     # must slice because labels are 1 and 2, 0 is skipped by build_image_data
     training_labels_sliced_op = tf.slice(tf.one_hot(training_labels_op, 3), [0, 1], [-1, -1])
     validation_labels_sliced_op = tf.slice(tf.one_hot(validation_labels_op, 3), [0, 1], [-1, -1])
@@ -265,6 +277,7 @@ def main(training_file, validation_file):
 
     validation_examples = sess.run(validation_examples_op)
     validation_labels = sess.run(validation_labels_sliced_op)
+    validation_filenames = sess.run(validation_filename_op)
 
     # train
     for i in range(NUM_STEPS):
@@ -275,7 +288,8 @@ def main(training_file, validation_file):
         print()
         print('Accuracy at step {0}: {1}'.format(i, acc))
       else:
-        training_examples, training_labels = sess.run([training_examples_op, training_labels_sliced_op])
+        training_examples, training_labels, training_filenames = \
+          sess.run([training_examples_op, training_labels_sliced_op, training_filename_op])
 
         sess.run(train_step,
           feed_dict={x: training_examples, y_: training_labels, keep_prob: DROPOUT})
