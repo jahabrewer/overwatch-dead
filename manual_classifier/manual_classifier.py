@@ -61,14 +61,17 @@ for label in labels:
         if args.verbose:
             print("created directory: {0}".format(label.directory))
 
-file_q = deque(glob.glob(args.source_image_dir + "/*"))
+file_q = deque(sorted(glob.glob(args.source_image_dir + "/*")))
 undo_stack = deque()
 
 top = tk.Tk()
-frame = tk.Frame(top, width=100, height=100)
+frame = tk.Frame(top, width=200, height=100)
 
 panel = tk.Label(frame)
-panel.pack(side="bottom", fill="both", expand="yes")
+panel.pack(side="left", fill="both", expand="yes")
+
+panel_next = tk.Label(frame)
+panel_next.pack(side="right", fill="both", expand="yes")
 
 currently_shown_file_path = None
 
@@ -115,11 +118,19 @@ def callback(event=None):
             print("no more files")
         exit()
 
+    # pop the next file and show it
     filename = file_q.popleft()
     currently_shown_file_path = filename
     img = ImageTk.PhotoImage(Image.open(filename))
     panel.configure(image=img)
     panel.image = img
+
+    # peek the following file and show it in the next pane
+    if len(file_q) > 0:
+        next_filename = file_q[0]
+        img_next = ImageTk.PhotoImage(Image.open(next_filename))
+        panel_next.configure(image=img_next)
+        panel_next.image = img_next
 
 # u for undo
 top.bind('u', callback)
