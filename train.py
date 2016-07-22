@@ -171,6 +171,8 @@ def inference_conv(x):
   filter_height = 5
   output_depth_1 = 32
   output_depth_2 = 64
+  fc1_dim = 1024
+  fc2_dim = 512
 
   W_conv1 = weight_variable([filter_height, filter_width, IMAGE_CHANNELS, output_depth_1])
   b_conv1 = bias_variable([output_depth_1])
@@ -179,28 +181,35 @@ def inference_conv(x):
 
   h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
   # h_pool1 = max_pool_2x2(h_conv1)
+  norm1 = tf.nn.lrn(h_conv1)
 
   W_conv2 = weight_variable([filter_height, filter_width, output_depth_1, output_depth_2])
   b_conv2 = bias_variable([output_depth_2])
 
-  h_conv2 = tf.nn.relu(conv2d(h_conv1, W_conv2) + b_conv2)
+  h_conv2 = tf.nn.relu(conv2d(norm1, W_conv2) + b_conv2)
   # h_pool2 = max_pool_2x2(h_conv2)
+  norm2 = tf.nn.lrn(h_conv2)
 
-  # W_fc1 = weight_variable([IMAGE_HEIGHT * IMAGE_WIDTH / 16 * output_depth_2, 1024])
-  W_fc1 = weight_variable([IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2, 1024])
-  b_fc1 = bias_variable([1024])
+  # W_fc1 = weight_variable([IMAGE_HEIGHT * IMAGE_WIDTH / 16 * output_depth_2, fc1_dim])
+  W_fc1 = weight_variable([IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2, fc1_dim])
+  b_fc1 = bias_variable([fc1_dim])
 
   # h_conv2_flat = tf.reshape(h_conv2, [-1, IMAGE_HEIGHT * IMAGE_WIDTH / 16 * output_depth_2])
-  h_conv2_flat = tf.reshape(h_conv2, [-1, IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2])
+  h_conv2_flat = tf.reshape(norm2, [-1, IMAGE_HEIGHT * IMAGE_WIDTH * output_depth_2])
   h_fc1 = tf.nn.relu(tf.matmul(h_conv2_flat, W_fc1) + b_fc1)
 
   keep_prob = tf.placeholder(tf.float32)
-  h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+  # h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
-  W_fc2 = weight_variable([1024, OUTPUT_CLASSES])
-  b_fc2 = bias_variable([OUTPUT_CLASSES])
+  W_fc2 = weight_variable([fc1_dim, fc2_dim])
+  b_fc2 = bias_variable([fc2_dim])
 
-  return tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2), keep_prob
+  h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
+
+  W_fc3 = weight_variable([fc2_dim, OUTPUT_CLASSES])
+  b_fc3 = bias_variable([OUTPUT_CLASSES])
+
+  return tf.nn.softmax(tf.matmul(h_fc2, W_fc3) + b_fc3), keep_prob
 
 # adapted from cifar10
 # def inference_conv2(x):
