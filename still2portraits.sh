@@ -13,7 +13,9 @@
 # 720 values
 CROP_X_STARTS=(30 105 180 254 329 404 809 884 958 1033 1108 1182)
 CROP_X_SIZE=64
-CROP_Y_START=36
+#CROP_Y_START=36
+# Y start might have been changed in a patch around 7/19
+CROP_Y_START=30
 CROP_Y_SIZE=24
 
 CONVERT=$(which convert)
