@@ -19,7 +19,6 @@ parser.add_argument("--dropout", "-d", type=float, help="keep probability in the
 parser.add_argument("--learning-rate", "-l", type=float)
 parser.add_argument("--steps", "-s", type=int, help="number of iterations the model will be trained")
 parser.add_argument("--checkpoint-interval", "-ci", type=int, help="interval in steps at which a summary will be output")
-parser.add_argument("--num-training-examples", "-tn", type=int, help="number of examples in the training file")
 parser.add_argument("--num-validation-examples", "-tv", type=int, help="number of examples in the validation file")
 parser.add_argument("--batch-size", "-b", type=int, help="number of shuffled examples to use in each training step")
 args = parser.parse_args()
@@ -33,7 +32,6 @@ DROPOUT=args.dropout # keep probability
 LEARNING_RATE=args.learning_rate
 NUM_STEPS=args.steps
 # TODO hardcoded numbers of examples
-NUM_TRAINING_EXAMPLES = args.num_training_examples
 NUM_VALIDATION_EXAMPLES = args.num_validation_examples
 
 # Remember to generate a file name queue of you 'train.TFRecord' file path
@@ -169,10 +167,10 @@ def conv2d(x, W):
 def inference_conv(x):
   filter_width = 5
   filter_height = 5
-  output_depth_1 = 32
-  output_depth_2 = 64
-  fc1_dim = 1024
-  fc2_dim = 512
+  output_depth_1 = 16
+  output_depth_2 = 32
+  fc1_dim = 512
+  fc2_dim = 256
 
   W_conv1 = weight_variable([filter_height, filter_width, IMAGE_CHANNELS, output_depth_1])
   b_conv1 = bias_variable([output_depth_1])
@@ -199,12 +197,12 @@ def inference_conv(x):
   h_fc1 = tf.nn.relu(tf.matmul(h_conv2_flat, W_fc1) + b_fc1)
 
   keep_prob = tf.placeholder(tf.float32)
-  # h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+  h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
   W_fc2 = weight_variable([fc1_dim, fc2_dim])
   b_fc2 = bias_variable([fc2_dim])
 
-  h_fc2 = tf.nn.relu(tf.matmul(h_fc1, W_fc2) + b_fc2)
+  h_fc2 = tf.nn.relu(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
 
   W_fc3 = weight_variable([fc2_dim, OUTPUT_CLASSES])
   b_fc3 = bias_variable([OUTPUT_CLASSES])
@@ -290,26 +288,28 @@ def main(training_file, validation_file):
 
     # train
     for i in range(NUM_STEPS):
+      training_examples, training_labels, training_filenames = \
+        sess.run([training_examples_op, training_labels_sliced_op, training_filename_op])
+
       if i % args.checkpoint_interval == 0:
         summary, acc = sess.run([merged, accuracy],
-          feed_dict={x: validation_examples, y_: validation_labels, keep_prob: 1.0})
+          feed_dict={x: training_examples, y_: training_labels, keep_prob: 1.0})
         summary_writer.add_summary(summary, i)
         print()
-        print('Accuracy at step {0}: {1}'.format(i, acc))
-      else:
-        training_examples, training_labels, training_filenames = \
-          sess.run([training_examples_op, training_labels_sliced_op, training_filename_op])
+        print('Training accuracy at step {0}: {1}'.format(i, acc))
+      # else:
 
-        sess.run(train_step,
-          feed_dict={x: training_examples, y_: training_labels, keep_prob: DROPOUT})
-        print('.', end='')
-        sys.stdout.flush()
+      sess.run(train_step,
+        feed_dict={x: training_examples, y_: training_labels, keep_prob: DROPOUT})
+      print('.', end='')
+      sys.stdout.flush()
 
     # show loss on training data
     # print(sess.run(accuracy, feed_dict={x: training_examples, y_: training_labels}))
 
     # show loss on validation data
-    # print(sess.run(accuracy, feed_dict={x: validation_examples, y_: validation_labels}))
+    print("Final validation accuracy:")
+    print(sess.run(accuracy, feed_dict={x: validation_examples, y_: validation_labels, keep_prob: 1.0}))
 
     coord.request_stop()
     coord.join(threads)
