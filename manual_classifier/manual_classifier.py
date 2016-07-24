@@ -27,7 +27,7 @@ parser.add_argument("destination_image_dir", help="directory where classified im
 parser.add_argument("-v", "--verbose", action="store_true")
 args = parser.parse_args()
 
-reserved_keys = ['u']
+reserved_keys = ['u','1','2','3','4','5','6','7','8','9']
 
 # read labels and key bindings
 with open(args.label_file) as f:
@@ -74,6 +74,7 @@ panel_next = tk.Label(frame)
 panel_next.pack(side="right", fill="both", expand="yes")
 
 currently_shown_file_path = None
+repeat_number = None
 
 def move_file(from_path, to_path):
     if args.verbose:
@@ -83,10 +84,15 @@ def move_file(from_path, to_path):
 def callback(event=None):
     # TODO get rid of this global?
     global currently_shown_file_path
+    global repeat_number
 
     if event is not None:
         if event.char == 'u':
             # undo
+            if repeat_number is not None:
+                print('repeat not supported for undo')
+                repeat_number = None
+
             if len(undo_stack) == 0:
                 print("can't undo right now")
                 return
@@ -98,6 +104,17 @@ def callback(event=None):
             undo_info = undo_stack.pop()
             move_file(undo_info.from_path, undo_info.to_path)
             file_q.appendleft(undo_info.to_path)
+        elif event.char.isdigit():
+            # repeat
+            input_num = int(event.char)
+            if repeat_number is None:
+                repeat_number = input_num
+            else:
+                repeat_number *= 10
+                repeat_number += input_num
+            if args.verbose:
+                print('repeat mode: {0}'.format(repeat_number))
+            return
         else:
             # find the label whose key was pressed
             matched_label = next((l for l in labels if l.keybinding == event.char), None)
@@ -107,11 +124,23 @@ def callback(event=None):
                 print('unrecognized keystroke: {0}'.format(event.char))
                 return
 
-            # move the file
-            target_path = os.path.join(matched_label.directory, os.path.basename(currently_shown_file_path))
-            move_file(currently_shown_file_path, target_path)
-            # store paths to perform undo
-            undo_stack.append(Undo(target_path, currently_shown_file_path))
+            files_to_move = [currently_shown_file_path]
+            if repeat_number is not None:
+                for i in range(repeat_number-1):
+                    if len(file_q) == 0:
+                        print('repeat goes past end of queue')
+                        break
+                    files_to_move.append(file_q.popleft())
+
+            for file in files_to_move:
+                # move the file
+                target_path = os.path.join(matched_label.directory, os.path.basename(file))
+                move_file(file, target_path)
+                # store paths to perform undo
+                undo_stack.append(Undo(target_path, file))
+
+            # reset the repeat
+            repeat_number = None
 
     if len(file_q) == 0:
         if args.verbose:
@@ -136,6 +165,9 @@ def callback(event=None):
 top.bind('u', callback)
 for keybinding in [l.keybinding for l in labels]:
     top.bind(keybinding, callback)
+# numbers for repeat
+for i in range(10):
+    top.bind(str(i), callback)
 frame.pack()
 
 # kickstart it
