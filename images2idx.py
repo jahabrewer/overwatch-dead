@@ -78,7 +78,7 @@ with gzip.open(args.output_label_file, 'wb') as idx_label_file, \
 
         # TODO discover dimensions
         IMAGE_HEIGHT = 24
-        IMAGE_WIDTH = 64
+        IMAGE_WIDTH = 24
         IMAGE_CHANNELS = 3
 
         # write dimensions for image file

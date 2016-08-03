@@ -49,12 +49,20 @@ parser.add_argument("train_label_file", help="IDX file containing training label
 parser.add_argument("test_image_file", help="IDX file containing test images")
 parser.add_argument("test_label_file", help="IDX file containing test labels")
 parser.add_argument("--validation-size", "-vs", type=int, help="number of training examples to segregate into the validation set")
+parser.add_argument("--num-steps", "-ns", type=int, help="number of training steps")
+parser.add_argument("--checkpoint-interval", "-ci", type=int, help="number of training steps between each checkpoint")
+parser.add_argument("--batch-size", "-b", type=int, help="number of examples to use in each training step")
+parser.add_argument("--learning-rate", "-l", type=float, help="learning rate")
+parser.add_argument("--dropout", "-d", type=float, help="probability that a neuron will be kept in dropout layers", \
+  default=0.5)
+parser.add_argument("--summaries-dir", "-s", help="the directory in which to write summary logs", \
+  type=str, default="/tmp/overwatch-dead-logs")
 parser.add_argument("-v", "--verbose", action="store_true")
 args = parser.parse_args()
 
 # TODO get rid of these constants
 IMAGE_HEIGHT=24
-IMAGE_WIDTH=64
+IMAGE_WIDTH=24
 IMAGE_CHANNELS=3
 NUM_CLASSES=2
 
@@ -223,20 +231,9 @@ def read_data_sets(train_image_file,
   # TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
   # VALIDATION_SIZE = 5000
 
-  # local_file = base.maybe_download(TRAIN_IMAGES, train_dir,
-  #                                  SOURCE_URL + TRAIN_IMAGES)
   train_images = extract_images(train_image_file)
-
-  # local_file = base.maybe_download(TRAIN_LABELS, train_dir,
-  #                                  SOURCE_URL + TRAIN_LABELS)
   train_labels = extract_labels(train_label_file, one_hot=one_hot)
-
-  # local_file = base.maybe_download(TEST_IMAGES, train_dir,
-  #                                  SOURCE_URL + TEST_IMAGES)
   test_images = extract_images(test_image_file)
-
-  # local_file = base.maybe_download(TEST_LABELS, train_dir,
-  #                                  SOURCE_URL + TEST_LABELS)
   test_labels = extract_labels(test_label_file, one_hot=one_hot)
 
   validation_images = train_images[:validation_size]
@@ -254,6 +251,18 @@ def read_data_sets(train_image_file,
   return base.Datasets(train=train, validation=validation, test=test)
 
 ### END MNIST.PY
+
+def variable_summaries(var, name):
+  """Attach a lot of summaries to a Tensor."""
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.scalar_summary('mean/' + name, mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
+    tf.scalar_summary('sttdev/' + name, stddev)
+    tf.scalar_summary('max/' + name, tf.reduce_max(var))
+    tf.scalar_summary('min/' + name, tf.reduce_min(var))
+    tf.histogram_summary(name, var)
 
 def weight_variable(shape):
   initial = tf.truncated_normal(shape, stddev=0.1)
@@ -280,19 +289,24 @@ mnist = read_data_sets(args.train_image_file,
 with tf.Session() as sess:
   # sess = tf.InteractiveSession()
 
+  with tf.name_scope('input')
   x = tf.placeholder(tf.float32, shape=[None, IMAGE_HEIGHT*IMAGE_WIDTH*IMAGE_CHANNELS])
+  x_image = tf.reshape(x, [-1,IMAGE_HEIGHT,IMAGE_WIDTH,IMAGE_CHANNELS])
+  tf.image_summary('xinput', x_image, max_images=3)
   y_ = tf.placeholder(tf.float32, shape=[None, NUM_CLASSES])
 
   #W = tf.Variable(tf.zeros([784,10]))
   #b = tf.Variable(tf.zeros([10]))
-  W_conv1 = weight_variable([5, 5, IMAGE_CHANNELS, 32])
-  b_conv1 = bias_variable([32])
+  with tf.name_scope('conv1'):
+    W_conv1 = weight_variable([5, 5, IMAGE_CHANNELS, 32])
+    variable_summaries(W_conv1, 'convv1/weights')
+    b_conv1 = bias_variable([32])
 
-  x_image = tf.reshape(x, [-1,IMAGE_HEIGHT,IMAGE_WIDTH,IMAGE_CHANNELS])
-  h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
-  h_pool1 = max_pool_2x2(h_conv1)
+    h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+    h_pool1 = max_pool_2x2(h_conv1)
 
   W_conv2 = weight_variable([5, 5, 32, 64])
+  # variable_summaries(W_conv2, 'conv2/weights')
   b_conv2 = bias_variable([64])
 
   h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
@@ -314,20 +328,56 @@ with tf.Session() as sess:
 
   y_conv=tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
 
-  cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
-  train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+  with tf.name_scope('cross_entropy'):
+    diff = y_ * tf.log(y_conv)
+    # diff = y_ * tf.log(tf.clip_by_value(y_conv,1e-10,1.0))
+    with tf.name_scope('total'):
+      cross_entropy = -tf.reduce_mean(diff)
+      cross_entropy = tf.Print(cross_entropy, [cross_entropy], "CrossE")
+    tf.scalar_summary('cross entropy', cross_entropy)
+  # cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
+  train_step = tf.train.AdamOptimizer(args.learning_rate).minimize(cross_entropy)
   correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
   accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-  sess.run(tf.initialize_all_variables())
-  for i in range(1000):
-    batch = mnist.train.next_batch(50)
-    if i%100 == 0:
-      train_accuracy = accuracy.eval(feed_dict={
-          x:batch[0], y_: batch[1], keep_prob: 1.0})
-      print("step %d, training accuracy %g"%(i, train_accuracy))
-    print('.', end='')
-    train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
-    sys.stdout.flush()
 
-  print("test accuracy %g"%accuracy.eval(feed_dict={
-      x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
+  # Merge all the summaries and write them out to /tmp/mnist_logs (by default)
+  merged = tf.merge_all_summaries()
+  train_writer = tf.train.SummaryWriter(args.summaries_dir + '/train',
+                                        sess.graph)
+  test_writer = tf.train.SummaryWriter(args.summaries_dir + '/test')
+
+  def feed_dict(train):
+    """Make a TensorFlow feed_dict: maps data onto Tensor placeholders."""
+    if train:
+      xs, ys = mnist.train.next_batch(args.batch_size)
+      k = args.dropout
+    else:
+      xs, ys = mnist.test.images, mnist.test.labels
+      k = 1.0
+    return {x: xs, y_: ys, keep_prob: k}
+
+  sess.run(tf.initialize_all_variables())
+
+  for i in range(args.num_steps):
+    if i % args.checkpoint_interval == 0:  # Record summaries and test-set accuracy
+      summary, acc = sess.run([merged, accuracy], feed_dict=feed_dict(train=False))
+      test_writer.add_summary(summary, i)
+      print('Accuracy at step %s: %s' % (i, acc))
+    else:  # Record train set summaries, and train
+      print('.', end='')
+      sys.stdout.flush()
+      if i % args.checkpoint_interval == args.checkpoint_interval-1:  # Record execution stats
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        summary, _ = sess.run([merged, train_step],
+                              feed_dict=feed_dict(train=True),
+                              options=run_options,
+                              run_metadata=run_metadata)
+        train_writer.add_run_metadata(run_metadata, 'step%d' % i)
+        train_writer.add_summary(summary, i)
+        print('Adding run metadata for', i)
+      else:  # Record a summary
+        summary, _ = sess.run([merged, train_step], feed_dict=feed_dict(train=True))
+        train_writer.add_summary(summary, i)
+
+  print("test accuracy %g"%accuracy.eval(feed_dict=feed_dict(train=False)))
