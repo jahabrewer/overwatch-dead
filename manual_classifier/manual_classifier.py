@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# A GUI program that makes manually classifying images for test set generation easy.
+# A GUI program that makes manually classifying images for test set generation easier.
 
 import argparse
 import Tkinter as tk
@@ -27,7 +27,7 @@ parser.add_argument("destination_image_dir", help="directory where classified im
 parser.add_argument("-v", "--verbose", action="store_true")
 args = parser.parse_args()
 
-reserved_keys = ['u','1','2','3','4','5','6','7','8','9']
+reserved_keys = ['u','1','2','3','4','5','6','7','8','9','0']
 
 # read labels and key bindings
 with open(args.label_file) as f:
